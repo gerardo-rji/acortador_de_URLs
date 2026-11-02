@@ -11,23 +11,29 @@ export const notFoundHandler: RequestHandler = (req, res) => {
   });
 };
 
+export interface ErrorHandlerOptions {
+  /** Si es true, incluye el mensaje del error en la respuesta (solo fuera de producción). */
+  exposeDetails: boolean;
+}
+
 /**
  * Handler global de errores. Debe ser el último middleware.
  * Express 5 también reenvía aquí los rechazos de handlers async.
  */
-export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
-  // Si la respuesta ya empezó a enviarse no podemos cambiar status/headers:
-  // se delega al handler por defecto de Express, que cierra la conexión.
-  if (res.headersSent) {
-    next(err);
-    return;
-  }
+export function createErrorHandler({ exposeDetails }: ErrorHandlerOptions): ErrorRequestHandler {
+  return (err, _req, res, next) => {
+    // Si la respuesta ya empezó a enviarse no podemos cambiar status/headers:
+    // se delega al handler por defecto de Express, que cierra la conexión.
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
 
-  console.error(err);
+    console.error(err);
 
-  const isProduction = process.env.NODE_ENV === 'production';
-  res.status(500).json({
-    error: 'Internal Server Error',
-    ...(isProduction ? {} : { message: err instanceof Error ? err.message : String(err) }),
-  });
-};
+    res.status(500).json({
+      error: 'Internal Server Error',
+      ...(exposeDetails ? { message: err instanceof Error ? err.message : String(err) } : {}),
+    });
+  };
+}

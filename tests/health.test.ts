@@ -2,13 +2,14 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.ts';
+import { loadConfig } from '../src/config.ts';
 import { openDatabase, type Db } from '../src/db/connection.ts';
 
 let server: Server | undefined;
 let db: Db | undefined;
 
 async function start(database: Db): Promise<string> {
-  const app = createApp({ db: database });
+  const app = createApp({ db: database, config: loadConfig({}), log: () => {} });
   return new Promise((resolve) => {
     server = app.listen(0, () => {
       const { port } = server!.address() as AddressInfo;
