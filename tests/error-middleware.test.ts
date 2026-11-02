@@ -3,8 +3,9 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.ts';
+import { loadConfig } from '../src/config.ts';
 import { openDatabase, type Db } from '../src/db/connection.ts';
-import { errorHandler, notFoundHandler } from '../src/shared/error-middleware.ts';
+import { createErrorHandler, notFoundHandler } from '../src/shared/error-middleware.ts';
 
 let server: Server | undefined;
 let db: Db | undefined;
@@ -19,7 +20,7 @@ async function start(app: Express): Promise<string> {
 }
 
 /** App mínima con rutas que fallan, montando los middlewares reales al final. */
-function createFailingApp(): Express {
+function createFailingApp({ exposeDetails = true } = {}): Express {
   const app = express();
   app.get('/ok', (_req, res) => {
     res.json({ ok: true });
@@ -35,7 +36,7 @@ function createFailingApp(): Express {
     throw 'algo que no es un Error';
   });
   app.use(notFoundHandler);
-  app.use(errorHandler);
+  app.use(createErrorHandler({ exposeDetails }));
   return app;
 }
 
@@ -49,14 +50,13 @@ afterEach(async () => {
   if (db?.open) db.close();
   server = undefined;
   db = undefined;
-  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
 describe('notFoundHandler', () => {
   it('devuelve 404 con JSON indicando que la ruta no existe', async () => {
     db = openDatabase(':memory:');
-    const baseUrl = await start(createApp({ db }));
+    const baseUrl = await start(createApp({ db, config: loadConfig({}), log: () => {} }));
 
     const res = await fetch(`${baseUrl}/no-existe`);
 
@@ -70,7 +70,7 @@ describe('notFoundHandler', () => {
 
   it('también aplica a otros métodos HTTP', async () => {
     db = openDatabase(':memory:');
-    const baseUrl = await start(createApp({ db }));
+    const baseUrl = await start(createApp({ db, config: loadConfig({}), log: () => {} }));
 
     const res = await fetch(`${baseUrl}/health`, { method: 'DELETE' });
 
@@ -107,8 +107,7 @@ describe('errorHandler', () => {
     expect(server!.listening).toBe(true);
   });
 
-  it('en desarrollo incluye el mensaje del error', async () => {
-    vi.stubEnv('NODE_ENV', 'development');
+  it('con exposeDetails incluye el mensaje del error', async () => {
     const baseUrl = await start(createFailingApp());
 
     const res = await fetch(`${baseUrl}/boom-sync`);
@@ -119,8 +118,7 @@ describe('errorHandler', () => {
     });
   });
 
-  it('en desarrollo convierte a texto los valores lanzados que no son Error', async () => {
-    vi.stubEnv('NODE_ENV', 'development');
+  it('con exposeDetails convierte a texto los valores lanzados que no son Error', async () => {
     const baseUrl = await start(createFailingApp());
 
     const res = await fetch(`${baseUrl}/boom-non-error`);
@@ -131,9 +129,8 @@ describe('errorHandler', () => {
     });
   });
 
-  it('en producción no expone detalles internos', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
-    const baseUrl = await start(createFailingApp());
+  it('sin exposeDetails (producción) no expone detalles internos', async () => {
+    const baseUrl = await start(createFailingApp({ exposeDetails: false }));
 
     const res = await fetch(`${baseUrl}/boom-sync`);
     const text = await res.text();
