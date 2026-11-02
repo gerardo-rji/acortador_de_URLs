@@ -1,12 +1,12 @@
 import { createApp } from './app.ts';
-import { loadConfig } from './config.ts';
+import { config } from './config.ts';
 import { openDatabase } from './db/connection.ts';
 
-const config = loadConfig();
 const db = openDatabase(config.databasePath);
 const app = createApp({ db });
 
-const server = app.listen(config.port, () => {
+const server = app.listen(config.port, (err?: Error) => {
+  if (err) throw err;
   console.log(`Snap escuchando en http://localhost:${config.port}`);
 });
 
