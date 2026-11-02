@@ -1,45 +1,51 @@
-import { once } from 'node:events';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.ts';
 import { openDatabase, type Db } from '../src/db/connection.ts';
 
+let server: Server | undefined;
+let db: Db | undefined;
+
+async function start(database: Db): Promise<string> {
+  const app = createApp({ db: database });
+  return new Promise((resolve) => {
+    server = app.listen(0, () => {
+      const { port } = server!.address() as AddressInfo;
+      resolve(`http://127.0.0.1:${port}`);
+    });
+  });
+}
+
+afterEach(async () => {
+  await new Promise<void>((resolve) => (server ? server.close(() => resolve()) : resolve()));
+  if (db?.open) db.close();
+  server = undefined;
+  db = undefined;
+});
+
 describe('GET /health', () => {
-  let db: Db;
-  let server: Server;
-  let baseUrl: string;
-
-  beforeEach(async () => {
+  it('responde 200 con status ok cuando la BD está disponible', async () => {
     db = openDatabase(':memory:');
-    server = createApp({ db }).listen(0);
-    await once(server, 'listening');
-    const { port } = server.address() as AddressInfo;
-    baseUrl = `http://127.0.0.1:${port}`;
-  });
+    const baseUrl = await start(db);
 
-  afterEach(async () => {
-    server.close();
-    await once(server, 'close');
-    if (db.open) db.close();
-  });
-
-  it('responde 200 con status ok', async () => {
     const res = await fetch(`${baseUrl}/health`);
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/application\/json/);
     const body = (await res.json()) as { status: string; db: string; uptime: unknown };
-    expect(body).toMatchObject({ status: 'ok', db: 'ok' });
+    expect(body).toMatchObject({ status: 'ok', db: 'up' });
     expect(typeof body.uptime).toBe('number');
   });
 
-  it('responde 503 si la base de datos no está disponible', async () => {
+  it('responde 503 cuando la BD no está disponible', async () => {
+    db = openDatabase(':memory:');
+    const baseUrl = await start(db);
     db.close();
 
     const res = await fetch(`${baseUrl}/health`);
 
     expect(res.status).toBe(503);
-    expect(await res.json()).toEqual({ status: 'error', db: 'unreachable' });
+    expect(await res.json()).toMatchObject({ status: 'degraded', db: 'down' });
   });
 });

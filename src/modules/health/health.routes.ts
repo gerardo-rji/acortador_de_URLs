@@ -1,16 +1,23 @@
 import { Router } from 'express';
 import type { Db } from '../../db/connection.ts';
 
-export function healthRouter(db: Db): Router {
+export function healthRouter({ db }: { db: Db }): Router {
   const router = Router();
 
   router.get('/', (_req, res) => {
+    let dbUp: boolean;
     try {
       db.prepare('SELECT 1').get();
-      res.json({ status: 'ok', db: 'ok', uptime: process.uptime() });
+      dbUp = true;
     } catch {
-      res.status(503).json({ status: 'error', db: 'unreachable' });
+      dbUp = false;
     }
+
+    res.status(dbUp ? 200 : 503).json({
+      status: dbUp ? 'ok' : 'degraded',
+      db: dbUp ? 'up' : 'down',
+      uptime: process.uptime(),
+    });
   });
 
   return router;
