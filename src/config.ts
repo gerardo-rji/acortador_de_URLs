@@ -13,19 +13,34 @@ export interface Config {
     /** Ruta efectiva que se pasa a better-sqlite3. */
     readonly path: string;
   };
+  readonly auth: {
+    /** Secreto con el que se firman los JWT (HS256). */
+    readonly jwtSecret: string;
+    /** Coste de bcrypt (2^rounds iteraciones). */
+    readonly bcryptRounds: number;
+  };
 }
 
 /**
  * Variables que en desarrollo/test tienen fallback, pero que en producción
  * deben definirse explícitamente.
  */
-const REQUIRED_IN_PRODUCTION = ['PORT', 'DB_NAME'] as const;
+const REQUIRED_IN_PRODUCTION = ['PORT', 'DB_NAME', 'JWT_SECRET'] as const;
 
 const DEFAULTS = {
   NODE_ENV: 'development',
   PORT: '3000',
   DB_NAME: 'snap.db',
+  // Solo para desarrollo/test. En producción JWT_SECRET es obligatorio.
+  JWT_SECRET: 'dev-only-insecure-jwt-secret-do-not-use-in-prod',
+  BCRYPT_ROUNDS: '12',
 } as const;
+
+/** Rango de BCRYPT_ROUNDS. Por debajo de 10 solo tiene sentido en tests. */
+const BCRYPT_ROUNDS_RANGE = { min: 4, max: 15 } as const;
+
+/** Longitud mínima del secreto JWT en producción (256 bits para HS256). */
+export const MIN_JWT_SECRET_LENGTH = 32;
 
 const DATA_DIR = 'data';
 
@@ -85,6 +100,19 @@ export function loadConfig(env: Env = process.env): Config {
   const dbName = read(env, 'DB_NAME') ?? DEFAULTS.DB_NAME;
   const dbPath = dbName === ':memory:' ? dbName : join(DATA_DIR, dbName);
 
+  const rawJwtSecret = read(env, 'JWT_SECRET');
+  if (isProduction && rawJwtSecret !== undefined && rawJwtSecret.length < MIN_JWT_SECRET_LENGTH) {
+    problems.push(`JWT_SECRET es demasiado corto (mínimo ${MIN_JWT_SECRET_LENGTH} caracteres en production)`);
+  }
+  const jwtSecret = rawJwtSecret ?? DEFAULTS.JWT_SECRET;
+
+  const rawRounds = read(env, 'BCRYPT_ROUNDS') ?? DEFAULTS.BCRYPT_ROUNDS;
+  const bcryptRounds = Number(rawRounds);
+  const { min, max } = BCRYPT_ROUNDS_RANGE;
+  if (!/^\d+$/.test(rawRounds) || bcryptRounds < min || bcryptRounds > max) {
+    problems.push(`BCRYPT_ROUNDS="${rawRounds}" no es válido (debe ser un entero entre ${min} y ${max})`);
+  }
+
   if (problems.length > 0) {
     throw new ConfigError(problems);
   }
@@ -94,6 +122,7 @@ export function loadConfig(env: Env = process.env): Config {
     isProduction,
     port,
     db: Object.freeze({ name: dbName, path: dbPath }),
+    auth: Object.freeze({ jwtSecret, bcryptRounds }),
   });
 }
 

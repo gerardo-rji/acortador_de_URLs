@@ -35,6 +35,15 @@ function createFailingApp({ exposeDetails = true } = {}): Express {
   app.get('/boom-non-error', () => {
     throw 'algo que no es un Error';
   });
+  app.get('/client-error', () => {
+    throw Object.assign(new Error('mensaje interno del parser'), { status: 422, expose: true });
+  });
+  app.get('/client-error-not-exposed', () => {
+    throw Object.assign(new Error('fallo con status pero no expuesto'), { status: 400, expose: false });
+  });
+  app.post('/json', express.json(), (req, res) => {
+    res.json(req.body);
+  });
   app.use(notFoundHandler);
   app.use(createErrorHandler({ exposeDetails }));
   return app;
@@ -139,5 +148,63 @@ describe('errorHandler', () => {
     expect(JSON.parse(text)).toEqual({ error: 'Internal Server Error' });
     expect(text).not.toContain('detalle interno');
     expect(text).not.toContain('at '); // sin stack trace
+  });
+});
+
+describe('errorHandler: errores del cliente (4xx)', () => {
+  function postJson(baseUrl: string, body: string): Promise<Response> {
+    return fetch(`${baseUrl}/json`, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+  }
+
+  it('JSON mal formado → 400, sin el mensaje interno del parser y sin loguearlo como error', async () => {
+    const baseUrl = await start(createFailingApp({ exposeDetails: false }));
+
+    const res = await postJson(baseUrl, '{ esto no es json');
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'Bad Request',
+      message: 'El body de la petición no es JSON válido',
+    });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('body demasiado grande → 413', async () => {
+    const baseUrl = await start(createFailingApp({ exposeDetails: false }));
+
+    const res = await postJson(baseUrl, JSON.stringify({ x: 'a'.repeat(200_000) }));
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({
+      error: 'Payload Too Large',
+      message: 'El body de la petición es demasiado grande',
+    });
+  });
+
+  it('respeta otros 4xx con expose, sin filtrar su mensaje interno', async () => {
+    const baseUrl = await start(createFailingApp({ exposeDetails: false }));
+
+    const res = await fetch(`${baseUrl}/client-error`);
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: 'Unprocessable Entity', message: 'Unprocessable Entity' });
+  });
+
+  it('un error con status pero sin expose sigue siendo un 500', async () => {
+    const baseUrl = await start(createFailingApp({ exposeDetails: false }));
+
+    const res = await fetch(`${baseUrl}/client-error-not-exposed`);
+
+    expect(res.status).toBe(500);
+    expect(console.error).toHaveBeenCalledOnce();
+  });
+
+  it('el JSON válido sigue funcionando', async () => {
+    const baseUrl = await start(createFailingApp());
+
+    const res = await postJson(baseUrl, '{"a":1}');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ a: 1 });
   });
 });

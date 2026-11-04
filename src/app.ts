@@ -1,7 +1,9 @@
 import express, { type Express } from 'express';
 import type { Config } from './config.ts';
 import type { Db } from './db/connection.ts';
+import { authRouter } from './modules/auth/auth.routes.ts';
 import { healthRouter } from './modules/health/health.routes.ts';
+import { redirectRouter, urlsRouter } from './modules/urls/urls.routes.ts';
 import { createErrorHandler, notFoundHandler } from './shared/error-middleware.ts';
 import { createRequestLogger, type LogFn } from './shared/request-logger.ts';
 
@@ -26,6 +28,10 @@ export function createApp({ db, config, log = console.log }: AppDeps): Express {
   app.use(express.json());
 
   app.use('/health', healthRouter({ db }));
+  app.use('/auth', authRouter({ db, ...config.auth }));
+  app.use('/api/urls', urlsRouter({ db, jwtSecret: config.auth.jwtSecret }));
+  // Rutas de nivel raíz (/:code): siempre las últimas antes del 404.
+  app.use('/', redirectRouter({ db }));
 
   app.use(notFoundHandler);
   app.use(createErrorHandler({ exposeDetails: !config.isProduction }));
