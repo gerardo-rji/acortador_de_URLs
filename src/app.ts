@@ -5,6 +5,7 @@ import { authRouter } from './modules/auth/auth.routes.ts';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes.ts';
 import { healthRouter } from './modules/health/health.routes.ts';
 import { redirectRouter, urlsRouter } from './modules/urls/urls.routes.ts';
+import { webRouter } from './modules/web/web.routes.ts';
 import { createErrorHandler, notFoundHandler } from './shared/error-middleware.ts';
 import { createRequestLogger, type LogFn } from './shared/request-logger.ts';
 
@@ -34,6 +35,10 @@ export function createApp({ db, config, log = console.log, now = () => new Date(
   app.use('/auth', authRouter({ db, ...config.auth }));
   app.use('/api/urls', urlsRouter({ db, jwtSecret: config.auth.jwtSecret }));
   app.use('/api/dashboard', dashboardRouter({ db, jwtSecret: config.auth.jwtSecret, now }));
+  // Interfaz web (public/). Va después de la API, para que ningún fichero la
+  // tape, y antes de /:code. Un fichero de public/ sin extensión y con forma
+  // de código corto taparía esa URL (lo vigila tests/web.test.ts).
+  app.use(webRouter());
   // Rutas de nivel raíz (/:code): siempre las últimas antes del 404.
   app.use('/', redirectRouter({ db, visitorHashSecret: config.analytics.visitorHashSecret, now, log }));
 

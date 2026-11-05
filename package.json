@@ -13,7 +13,7 @@
     "prebuild": "npm run clean",
     "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/server.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -15,6 +15,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
 
+    // Los tests importan los módulos puros de public/js (tipados con JSDoc;
+    // se comprueban con tsconfig.web.json).
+    "allowJs": true,
+
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "allowImportingTsExtensions": true,
